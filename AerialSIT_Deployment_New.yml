@@ -1,0 +1,52 @@
+name: AerialSIT Deployment
+
+on:
+  push:
+    branches:
+      - release-AerialSIT
+
+jobs:
+  #Triggers AerialSIT whenever a Source branch is merged to release-AerialSIT branch.   
+  SCE_Deploy_AerialSIT:
+    name: AerialSIT Deployment
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/release-AerialSIT' }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: '0'
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '12.x'
+        
+    - name: Create Delta Artifacts
+      shell: pwsh
+      run: |
+        ./build/sfdxddl.ps1 -buildtype AutomaticType5
+    
+    - name: Publish Delta Artifacts
+      uses: actions/upload-artifact@v2
+      with: 
+        name: delta-artifact
+        path: deploy-artifacts
+
+    - name: Install Salesforce CLI
+      run: |
+        npm install sfdx-cli
+        node_modules/sfdx-cli/bin/run --version
+        node_modules/sfdx-cli/bin/run plugins --core
+        
+    - name: Update CLI
+      run: node_modules/sfdx-cli/bin/run update
+      
+    - name: Authenticate AerialSIT ORG
+      run: |
+        echo "${SALESFORCE_JWT_SECRET_KEY_LOWER}" > server.key
+        node_modules/sfdx-cli/bin/run force:auth:jwt:grant --clientid ${{ secrets.AERSIT1_CONSUMER_KEY }} --jwtkeyfile server.key --username ${{ secrets.AERSIT1_USERNAME}} --instanceurl ${{ secrets.SFDC_SANDBOX_HOST}} 
+      env:
+        SALESFORCE_JWT_SECRET_KEY_LOWER: ${{ secrets.SALESFORCE_JWT_SECRET_KEY_LOWER }}
+
+    - name: AerialSIT ORG Deployment
+      run: node_modules/sfdx-cli/bin/run force:source:deploy -p deploy-artifacts/force-app/main/default -u ${{ secrets.AERSIT1_USERNAME}}	  
+
+ 
